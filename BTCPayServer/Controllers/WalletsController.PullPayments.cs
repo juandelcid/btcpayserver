@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Abstractions.Models;
 using BTCPayServer.Client.Models;
+using BTCPayServer.Common;
 using BTCPayServer.Data;
 using BTCPayServer.HostedServices;
 using BTCPayServer.ModelBinders;
@@ -202,12 +203,19 @@ namespace BTCPayServer.Controllers
                     pullPaymentId = vm.PullPaymentId
                 });
             }
-
             var command = vm.Command.Substring(vm.Command.IndexOf('-', StringComparison.InvariantCulture) + 1);
-
+            var handler = _payoutHandlers
+                .FirstOrDefault(handler => handler.CanHandle(paymentMethodId));
+            if (handler != null)
+            {
+                var result = await handler.DoSpecificAction(command, payoutIds, walletId.StoreId);
+                if (result != null)
+                {
+                    TempData.SetStatusMessageModel(result);
+                }
+            }
             switch (command)
             {
-                
                 case "approve-pay":
                 case "approve":
                 {
@@ -264,8 +272,7 @@ namespace BTCPayServer.Controllers
                     {
                         Message = "Payouts approved", Severity = StatusMessageModel.StatusSeverity.Success
                     });
-                    return RedirectToAction(nameof(Payouts),
-                        new {walletId = walletId.ToString(), pullPaymentId = vm.PullPaymentId});
+                    break;
                 }
 
                 case "pay":
@@ -278,16 +285,32 @@ namespace BTCPayServer.Controllers
                     walletSend.Outputs.Clear();
                     var network = NetworkProvider.GetNetwork<BTCPayNetwork>(walletId.CryptoCode);
                     List<string> bip21 = new List<string>(); 
+                    
                     foreach (var payout in payouts)
                     {
-                        var blob = payout.GetBlob(_jsonSerializerSettings);
-                        if (payout.GetPaymentMethodId() != paymentMethodId)
+                        if (payout.Proof != null)
+                        {
                             continue;
-                        bip21.Add(network.GenerateBIP21(payout.Destination, new Money(blob.CryptoAmount.Value, MoneyUnit.BTC)));
+                        }
+                        var blob = payout.GetBlob(_jsonSerializerSettings);
+                        bip21.Add(network.GenerateBIP21(payout.Destination, new Money(blob.CryptoAmount.Value, MoneyUnit.BTC)).ToString());
                         
                     }
-
-                    return RedirectToAction(nameof(WalletSend), new {walletId, bip21});
+                    if(bip21.Any())
+                    {
+                        TempData.SetStatusMessageModel(null);
+                        return RedirectToAction(nameof(WalletSend), new {walletId, bip21});
+                    }
+                    TempData.SetStatusMessageModel(new StatusMessageModel()
+                    {
+                        Severity = StatusMessageModel.StatusSeverity.Error,
+                        Message = "There were no payouts eligible to pay from the selection. You may have selected payouts which have detected a transaction to the payout address with the payout amount that you need to accept or reject as the payout."
+                    });
+                    return RedirectToAction(nameof(Payouts), new
+                    {
+                        walletId = walletId.ToString(),
+                        pullPaymentId = vm.PullPaymentId
+                    });
                 }
 
                 case "mark-paid":
@@ -324,8 +347,7 @@ namespace BTCPayServer.Controllers
                     {
                         Message = "Payouts marked as paid", Severity = StatusMessageModel.StatusSeverity.Success
                     });
-                    return RedirectToAction(nameof(Payouts),
-                        new {walletId = walletId.ToString(), pullPaymentId = vm.PullPaymentId});
+                    break;
                 }
 
                 case "cancel":
@@ -335,11 +357,10 @@ namespace BTCPayServer.Controllers
                     {
                         Message = "Payouts archived", Severity = StatusMessageModel.StatusSeverity.Success
                     });
-                    return RedirectToAction(nameof(Payouts),
-                        new {walletId = walletId.ToString(), pullPaymentId = vm.PullPaymentId});
+                    break;
             }
-
-            return NotFound();
+            return RedirectToAction(nameof(Payouts),
+                new {walletId = walletId.ToString(), pullPaymentId = vm.PullPaymentId});
         }
 
         private static async Task<List<PayoutData>> GetPayoutsForPaymentMethod(PaymentMethodId paymentMethodId,
