@@ -1034,7 +1034,7 @@ namespace BTCPayServer.Controllers
                         return View(model);
                     }
                     using (var client = model.Settings.CreateSmtpClient())
-                    using (var message = model.Settings.CreateMailMessage(new MailAddress(model.TestEmail), "BTCPay test", "BTCPay test"))
+                    using (var message = model.Settings.CreateMailMessage(new MailAddress(model.TestEmail), "BTC Pagos test", "This is a test of the email server system"))
                     {
                         await client.SendMailAsync(message);
                     }

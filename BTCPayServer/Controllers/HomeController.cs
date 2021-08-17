@@ -60,6 +60,18 @@ namespace BTCPayServer.Controllers
             {
                 return RedirectToAction(nameof(AccountController.Register), "Account");
             }
+
+            return View("BTCPagos");
+        }
+
+        [Route("Home")]
+        [DomainMappingConstraint()]
+        public IActionResult Home()
+        {
+            if (_cachedServerSettings.FirstRun)
+            {
+                return RedirectToAction(nameof(AccountController.Register), "Account");
+            }
             if (SignInManager.IsSignedIn(User))
                 return View("Home");
             else

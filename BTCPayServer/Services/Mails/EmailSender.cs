@@ -33,10 +33,15 @@ namespace BTCPayServer.Services.Mails
                     try
                     {
                         await smtp.SendMailAsync(mail).WithCancellation(cancellationToken);
+                        Logs.PayServer.LogInformation($"Email sent to {email}");
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                     {
                         smtp.SendAsyncCancel();
+                    }
+                    catch (Exception exc)
+                    {
+                        Logs.PayServer.LogError($"Should have sent email, but got exception: {exc.Message}");
                     }
                 }
             }, TimeSpan.Zero);
